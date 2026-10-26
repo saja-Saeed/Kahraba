@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>حاسبة كهرباء العمارة</title>
+<meta name="theme-color" content="#23508E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="كهرباء العمارة">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&family=Readex+Pro:wght@600&display=swap">
+<style>
+/* Layout: one narrow column, settings → apartment cards → totals → history. Meter readings sit in LCD-style windows. */
+:root {
+  --bg: #F3F4F1;
+  --surface: #FFFFFF;
+  --ink: #1C2128;
+  --muted: #5D6570;
+  --line: #DADDD6;
+  --accent: #23508E;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E6ECF5;
+  --lcd-bg: #DCE2D3;
+  --lcd-ink: #1F2B1C;
+  --warn: #A3401F;
+  --warn-soft: #F7E7E0;
+  --ok: #2D6A3E;
+  --note-bg: #FFF6DA;
+  --note-ink: #5B4710;
+  --font-body: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+  --font-display: "Readex Pro", "IBM Plex Sans Arabic", Tahoma, sans-serif;
+  --font-digits: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15181C; --surface: #1E2227; --ink: #E7E9EC; --muted: #9AA2AD; --line: #323840;
+    --accent: #7FA6E0; --accent-ink: #0F1720; --accent-soft: #233042;
+    --lcd-bg: #28311F; --lcd-ink: #D3E3C2; --warn: #F0987A; --warn-soft: #3A2420; --ok: #8FD0A0;
+    --note-bg: #3A3218; --note-ink: #F2DE9C; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15181C; --surface: #1E2227; --ink: #E7E9EC; --muted: #9AA2AD; --line: #323840;
+  --accent: #7FA6E0; --accent-ink: #0F1720; --accent-soft: #233042;
+  --lcd-bg: #28311F; --lcd-ink: #D3E3C2; --warn: #F0987A; --warn-soft: #3A2420; --ok: #8FD0A0;
+  --note-bg: #3A3218; --note-ink: #F2DE9C; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  margin: 0;
+  padding-top: max(20px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(40px, env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+h1 { font-family: var(--font-display); font-size: 1.45rem; margin: 0; text-wrap: balance; }
+h2 { font-size: 1rem; margin: 0; font-weight: 600; }
+.sub { color: var(--muted); font-size: .88rem; margin: 2px 0 0; }
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
+input, button, select { font: inherit; color: inherit; }
+input[type="text"], input[type="month"] {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--ink); min-width: 0; width: 100%;
+}
+input:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { background: transparent; border: 0; padding: 9px 6px; cursor: pointer; font-size: .88rem; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hint { font-size: .82rem; color: var(--muted); margin: 0; }
+.check { display: flex; align-items: center; gap: 8px; font-size: .88rem; }
+.note { background: var(--note-bg); color: var(--note-ink); border-radius: 10px; padding: 10px 12px; font-size: .88rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.apts { display: flex; flex-direction: column; gap: 10px; }
+.apt { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.apt.has-err { border-color: var(--warn); }
+.apt-head { display: flex; align-items: baseline; gap: 8px; }
+.apt-name { font-weight: 600; }
+.tenant { color: var(--muted); font-size: .85rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.amt { font-weight: 700; font-size: 1.1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.amt small { font-weight: 500; font-size: .75rem; color: var(--muted); }
+.reads { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.reads label { display: flex; flex-direction: column; gap: 4px; font-size: .78rem; color: var(--muted); }
+input.meter {
+  direction: ltr; text-align: center; font-family: var(--font-digits); font-size: 1.15rem; letter-spacing: .08em;
+  background: var(--lcd-bg); color: var(--lcd-ink); border: 1px solid transparent; border-radius: 6px; padding: 8px 6px; width: 100%; min-width: 0;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.18);
+}
+input.meter::placeholder { color: var(--lcd-ink); opacity: .35; }
+input.meter[aria-invalid="true"] { border-color: var(--warn); }
+.apt-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: .85rem; color: var(--muted); }
+.apt-foot .cons { font-variant-numeric: tabular-nums; color: var(--ink); }
+.apt-foot .err { color: var(--warn); flex-basis: 100%; }
+.apt-foot .grow { flex: 1; }
+.btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 9px; padding: 10px 16px; font-weight: 600; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); font-weight: 500; }
+.btn.small { padding: 5px 10px; font-size: .8rem; }
+.btn.danger { color: var(--warn); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.totals div { display: flex; flex-direction: column; gap: 2px; }
+.totals span { font-size: .78rem; color: var(--muted); }
+.totals b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.status { font-size: .85rem; color: var(--muted); }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--warn); }
+details.panel > summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; }
+details.panel > summary::after { content: "+"; color: var(--muted); }
+details.panel[open] > summary::after { content: "−"; }
+.mng { display: flex; flex-direction: column; gap: 8px; }
+.mng-row { display: grid; grid-template-columns: 1fr 1.3fr auto; gap: 8px; align-items: center; }
+.hist { display: flex; flex-direction: column; }
+.hist button { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; text-align: start; background: transparent; border: 0; border-top: 1px solid var(--line); padding: 10px 2px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.hist button:first-child { border-top: 0; }
+.hist button[aria-current="true"] { color: var(--accent); font-weight: 600; }
+.hist .k { color: var(--muted); font-size: .85rem; }
+.empty { color: var(--muted); font-size: .88rem; margin: 0; }
+@media (max-width: 420px) {
+  .totals { grid-template-columns: 1fr 1fr; }
+  .mng-row { grid-template-columns: 1fr 1fr; }
+  .mng-row .btn { grid-column: 1 / -1; justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap" dir="rtl">
+  <div class="top">
+    <div>
+      <h1>حاسبة كهرباء العمارة</h1>
+      <p class="sub">أدخل قراءة كل عداد آخر الشهر، والحسبة تطلع لحالها.</p>
+    </div>
+    <label class="field" style="width: 11rem">الشهر
+      <input type="month" id="month">
+    </label>
+  </div>
+
+  <div class="note" id="exampleNote" hidden>
+    <span>الأرقام الموجودة توضيحية عشان تشوف طريقة الحساب.</span>
+    <button class="btn small" id="clearExample" type="button">امسحها وابدأ</button>
+  </div>
+
+  <section class="panel" aria-labelledby="mTitle">
+    <h2 id="mTitle">طريقة الحساب</h2>
+    <div class="seg" role="group" aria-label="طريقة الحساب">
+      <button type="button" id="mSplit" aria-pressed="true">توزيع الفاتورة على الاستهلاك</button>
+      <button type="button" id="mRate" aria-pressed="false">سعر ثابت للكيلوواط</button>
+    </div>
+    <div id="splitBox">
+      <label class="field">مبلغ فاتورة العداد الرئيسي (ريال)
+        <input type="text" inputmode="decimal" id="bill" placeholder="مثلاً 850">
+      </label>
+      <p class="hint">كل شقة تدفع من الفاتورة بنسبة استهلاكها. إنارة الدرج والمضخة تتوزع تلقائياً بنفس النسبة.</p>
+    </div>
+    <div id="rateBox" hidden>
+      <div class="row2">
+        <label class="field">سعر الكيلوواط ساعة (ريال)
+          <input type="text" inputmode="decimal" id="rate" placeholder="0.18">
+        </label>
+        <label class="check" style="align-self: end; padding-bottom: 8px">
+          <input type="checkbox" id="vat"> إضافة ضريبة 15%
+        </label>
+      </div>
+    </div>
+    <div class="row2">
+      <label class="field">رسوم العداد الشهرية لكل شقة (ريال)
+        <input type="text" inputmode="decimal" id="fee" placeholder="5">
+      </label>
+      <label class="check" id="feeIncBox" style="align-self: end; padding-bottom: 8px">
+        <input type="checkbox" id="feeInc"> الرسوم من ضمن مبلغ الفاتورة
+      </label>
+    </div>
+  </section>
+
+  <section aria-labelledby="aTitle" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 id="aTitle">قراءات العدادات</h2>
+    <div class="apts" id="apts"></div>
+  </section>
+
+  <section class="panel" aria-label="الإجمالي">
+    <div class="totals">
+      <div><span>إجمالي الاستهلاك</span><b id="tCons">—</b></div>
+      <div><span>إجمالي المبالغ</span><b id="tAmt">—</b></div>
+      <div><span>سعر الكيلوواط الفعلي</span><b id="tPrice">—</b></div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="save" type="button">حفظ الشهر</button>
+      <button class="btn ghost" id="copyAll" type="button">نسخ الملخص</button>
+      <button class="btn ghost" id="showExample" type="button">تعبئة أرقام مثال</button>
+      <span class="status" id="status" role="status"></span>
+    </div>
+  </section>
+
+  <details class="panel" id="mngBox">
+    <summary>إدارة الشقق</summary>
+    <div class="mng" id="mng"></div>
+    <button class="btn ghost small" id="addApt" type="button" style="align-self: start">+ إضافة شقة</button>
+  </details>
+
+  <section class="panel" aria-labelledby="hTitle">
+    <h2 id="hTitle">الأشهر المحفوظة</h2>
+    <div class="hist" id="hist"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="bTitle">
+    <h2 id="bTitle">نسخة احتياطية</h2>
+    <p class="hint">البيانات محفوظة في هذا الجوال فقط. نزّل نسخة احتياطية كل فترة، وإذا غيّرت الجوال استرجعها منه.</p>
+    <div class="actions">
+      <button class="btn ghost small" id="backup" type="button">تنزيل نسخة احتياطية</button>
+      <label class="btn ghost small" for="restore" style="display: inline-block">استرجاع من ملف</label>
+      <input type="file" id="restore" accept=".json,application/json" hidden>
+    </div>
+  </section>
+
+  <p class="hint" id="installHint" hidden>لتثبيته كتطبيق: في الآيفون افتحه من Safari واضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية». في الأندرويد افتحه من Chrome واختر «تثبيت التطبيق» من القائمة.</p>
+</div>
+
+<script>
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const AR = "٠١٢٣٤٥٦٧٨٩", FA = "۰۱۲۳۴۵۶۷۸۹";
+  function toNum(v) {
+    if (v === null || v === undefined) return NaN;
+    let s = String(v).trim().replace(/[٠-٩]/g, (d) => AR.indexOf(d)).replace(/[۰-۹]/g, (d) => FA.indexOf(d));
+    s = s.replace(/٫/g, ".").replace(/[,،\s]/g, "");
+    if (s === "") return NaN;
+    const n = Number(s);
+    return isFinite(n) ? n : NaN;
+  }
+  const fmt = (n, d = 2) => isNaN(n) ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const fmtInt = (n) => isNaN(n) ? "—" : n.toLocaleString("en-US", { maximumFractionDigits: 1 });
+  function monthLabel(id) {
+    const [y, m] = id.split("-").map(Number);
+    try { return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { month: "long", year: "numeric" }).format(new Date(y, m - 1, 1)); }
+    catch (e) { return id; }
+  }
+  function nowMonth() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  const KEY = "kahraba-building-v1";
+  let config = {
+    apartments: [1, 2, 3, 4].map((i) => ({ id: "a" + i, name: "شقة " + i, tenant: "" })),
+    method: "split", rate: "0.18", vat: false, fee: "5", feeIncluded: false
+  };
+  let months = {};
+  let drafts = {};
+  let current = nowMonth();
+  let draft = null;
+  let example = false;
+  let decided = false;
+  let configLoaded = false;
+
+  function prevMonthOf(id) {
+    const ids = Object.keys(months).filter((k) => k < id).sort();
+    return ids.length ? months[ids[ids.length - 1]] : null;
+  }
+  function draftFor(id) {
+    if (drafts[id] && (drafts[id].dirty || drafts[id].example)) return drafts[id];
+    const saved = months[id];
+    if (saved) {
+      const r = {};
+      for (const k in (saved.readings || {})) r[k] = { start: String(saved.readings[k].start ?? ""), end: String(saved.readings[k].end ?? "") };
+      return { bill: saved.bill == null ? "" : String(saved.bill), readings: r, dirty: false };
+    }
+    const prev = prevMonthOf(id);
+    const r = {};
+    config.apartments.forEach((a) => {
+      const p = prev && prev.readings && prev.readings[a.id];
+      r[a.id] = { start: p && p.end != null ? String(p.end) : "", end: "" };
+    });
+    return { bill: "", readings: r, dirty: false };
+  }
+  function loadMonth(id) {
+    current = id;
+    $("#month").value = id;
+    draft = draftFor(id);
+    drafts[id] = draft;
+    renderAll();
+  }
+  function markDirty() { draft.dirty = true; setStatus(""); }
+
+  function fillExample(byUser) {
+    example = true;
+    const sample = [[12450, 12870], [8730, 9040], [15120, 15705], [6045, 6235]];
+    const r = {};
+    config.apartments.forEach((a, i) => {
+      const s = sample[i % sample.length];
+      r[a.id] = { start: String(s[0]), end: String(s[1]) };
+    });
+    if (config.method === "rate" && !config.rate) config.rate = "0.18";
+    draft = { bill: "342.50", readings: r, dirty: false, example: true, userExample: !!byUser };
+    drafts[current] = draft;
+    renderAll();
+  }
+
+  function compute() {
+    const rows = config.apartments.map((a) => {
+      const r = draft.readings[a.id] || {};
+      const s = toNum(r.start), e = toNum(r.end);
+      let cons = NaN, err = "";
+      if (!isNaN(s) && !isNaN(e)) {
+        cons = e - s;
+        if (cons < 0) { err = "القراءة الحالية أقل من السابقة، تأكد من الأرقام."; cons = NaN; }
+      }
+      return { a, cons, err };
+    });
+    const totalCons = rows.reduce((t, r) => t + (isNaN(r.cons) ? 0 : r.cons), 0);
+    const feeN = toNum(config.fee);
+    const fee = isNaN(feeN) ? 0 : feeN;
+    let price = NaN;
+    if (config.method === "split") {
+      const bill = toNum(draft.bill);
+      const base = isNaN(bill) ? NaN : bill - (config.feeIncluded ? fee * config.apartments.length : 0);
+      price = (!isNaN(base) && base >= 0 && totalCons > 0) ? base / totalCons : NaN;
+    } else {
+      price = toNum(config.rate);
+      if (!isNaN(price) && config.vat) price = price * 1.15;
+    }
+    let totalAmt = 0, any = false;
+    rows.forEach((r) => {
+      r.fee = fee;
+      r.energy = (isNaN(r.cons) || isNaN(price)) ? NaN : r.cons * price;
+      r.amount = isNaN(r.energy) ? NaN : r.energy + fee;
+      r.share = (totalCons > 0 && !isNaN(r.cons)) ? r.cons / totalCons : NaN;
+      if (!isNaN(r.amount)) { totalAmt += r.amount; any = true; }
+    });
+    return { rows, totalCons, price, totalAmt: any ? totalAmt : NaN };
+  }
+
+  function renderMethod() {
+    const split = config.method === "split";
+    $("#mSplit").setAttribute("aria-pressed", String(split));
+    $("#mRate").setAttribute("aria-pressed", String(!split));
+    $("#splitBox").hidden = !split;
+    $("#rateBox").hidden = split;
+    if (document.activeElement !== $("#bill")) $("#bill").value = draft.bill;
+    if (document.activeElement !== $("#rate")) $("#rate").value = config.rate ?? "";
+    $("#vat").checked = !!config.vat;
+    if (document.activeElement !== $("#fee")) $("#fee").value = config.fee ?? "";
+    $("#feeInc").checked = !!config.feeIncluded;
+    $("#feeIncBox").hidden = !split;
+  }
+
+  function renderApts() {
+    const box = $("#apts");
+    if (!config.apartments.length) { box.innerHTML = '<p class="empty">ما فيه شقق. أضفها من "إدارة الشقق" تحت.</p>'; return; }
+    box.innerHTML = config.apartments.map((a) => {
+      const r = draft.readings[a.id] || { start: "", end: "" };
+      return '<div class="apt" data-id="' + esc(a.id) + '">' +
+        '<div class="apt-head"><span class="apt-name">' + esc(a.name) + '</span><span class="tenant">' + esc(a.tenant || "") + '</span>' +
+        '<span class="amt" data-k="amt">—</span></div>' +
+        '<div class="reads">' +
+          '<label>القراءة السابقة<input class="meter" type="text" inputmode="decimal" id="s-' + esc(a.id) + '" data-f="start" value="' + esc(r.start) + '" placeholder="00000"></label>' +
+          '<label>القراءة الحالية<input class="meter" type="text" inputmode="decimal" id="e-' + esc(a.id) + '" data-f="end" value="' + esc(r.end) + '" placeholder="00000"></label>' +
+        '</div>' +
+        '<div class="apt-foot"><span class="cons" data-k="cons">—</span><span data-k="share"></span><span data-k="fee"></span><span class="grow"></span>' +
+        '<button class="btn ghost small" type="button" data-copy="' + esc(a.id) + '">نسخ</button>' +
+        '<span class="err" data-k="err" hidden></span></div>' +
+      '</div>';
+    }).join("");
+  }
+
+  function renderResults() {
+    const c = compute();
+    c.rows.forEach((r) => {
+      const el = document.querySelector('.apt[data-id="' + CSS.escape(r.a.id) + '"]');
+      if (!el) return;
+      el.querySelector('[data-k="amt"]').innerHTML = isNaN(r.amount) ? "—" : fmt(r.amount) + " <small>ريال</small>";
+      el.querySelector('[data-k="cons"]').textContent = isNaN(r.cons) ? "الاستهلاك: —" : "الاستهلاك: " + fmtInt(r.cons) + " ك.و.س";
+      el.querySelector('[data-k="share"]').textContent = isNaN(r.share) ? "" : Math.round(r.share * 100) + "٪ من الإجمالي";
+      el.querySelector('[data-k="fee"]').textContent = (isNaN(r.energy) || !r.fee) ? "" : fmt(r.energy) + " كهرباء + " + fmt(r.fee) + " رسوم";
+      const err = el.querySelector('[data-k="err"]');
+      err.hidden = !r.err; err.textContent = r.err;
+      el.classList.toggle("has-err", !!r.err);
+      el.querySelector('[data-f="end"]').setAttribute("aria-invalid", r.err ? "true" : "false");
+    });
+    $("#tCons").textContent = c.totalCons > 0 ? fmtInt(c.totalCons) + " ك.و.س" : "—";
+    $("#tAmt").textContent = isNaN(c.totalAmt) ? "—" : fmt(c.totalAmt) + " ريال";
+    $("#tPrice").textContent = isNaN(c.price) ? "—" : fmt(c.price, 3) + " ريال";
+    $("#exampleNote").hidden = !draft.example;
+  }
+
+  function renderMng() {
+    $("#mng").innerHTML = config.apartments.map((a) =>
+      '<div class="mng-row" data-id="' + esc(a.id) + '">' +
+      '<input type="text" id="n-' + esc(a.id) + '" data-m="name" value="' + esc(a.name) + '" aria-label="اسم الشقة">' +
+      '<input type="text" id="t-' + esc(a.id) + '" data-m="tenant" value="' + esc(a.tenant || "") + '" placeholder="اسم المستأجر (اختياري)" aria-label="اسم المستأجر">' +
+      '<button class="btn ghost small danger" type="button" data-del="' + esc(a.id) + '">حذف</button></div>'
+    ).join("");
+  }
+
+  function renderHist() {
+    const ids = Object.keys(months).sort().reverse();
+    if (!ids.length) { $("#hist").innerHTML = '<p class="empty">لما تحفظ أول شهر بيظهر هنا، وتقدر ترجع له وقت ما تبي.</p>'; return; }
+    $("#hist").innerHTML = ids.map((id) => {
+      const m = months[id];
+      const t = m.totals || {};
+      return '<button type="button" data-month="' + esc(id) + '"' + (id === current ? ' aria-current="true"' : "") + '>' +
+        '<span>' + esc(monthLabel(id)) + '</span><span class="k">' + fmtInt(t.cons) + ' ك.و.س</span><span>' + fmt(t.amount) + ' ريال</span></button>';
+    }).join("");
+  }
+
+  function renderAll() { renderMethod(); renderApts(); renderResults(); renderMng(); renderHist(); }
+
+  function setStatus(msg, kind) {
+    const s = $("#status");
+    s.textContent = msg; s.className = "status" + (kind ? " " + kind : "");
+  }
+
+  // ---- config writes, one at a time ----
+  function persist() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ version: 1, config, months }));
+      return true;
+    } catch (e) {
+      setStatus("ما قدرنا نحفظ في الجوال. تأكد إن المتصفح مو في وضع التصفح الخاص.", "bad");
+      return false;
+    }
+  }
+  function saveConfig() { persist(); }
+
+  // ---- events ----
+  $("#month").addEventListener("change", (e) => { if (e.target.value) loadMonth(e.target.value); });
+  $("#mSplit").addEventListener("click", () => { config.method = "split"; saveConfig(); renderMethod(); renderResults(); });
+  $("#mRate").addEventListener("click", () => { config.method = "rate"; saveConfig(); renderMethod(); renderResults(); });
+  $("#bill").addEventListener("input", (e) => { draft.bill = e.target.value; markDirty(); renderResults(); });
+  $("#rate").addEventListener("input", (e) => { config.rate = e.target.value; renderResults(); });
+  $("#rate").addEventListener("change", saveConfig);
+  $("#vat").addEventListener("change", (e) => { config.vat = e.target.checked; saveConfig(); renderResults(); });
+  $("#fee").addEventListener("input", (e) => { config.fee = e.target.value; renderResults(); });
+  $("#fee").addEventListener("change", saveConfig);
+  $("#feeInc").addEventListener("change", (e) => { config.feeIncluded = e.target.checked; saveConfig(); renderResults(); });
+
+  $("#apts").addEventListener("input", (e) => {
+    const f = e.target.dataset.f; if (!f) return;
+    const id = e.target.closest(".apt").dataset.id;
+    draft.readings[id] = draft.readings[id] || { start: "", end: "" };
+    draft.readings[id][f] = e.target.value;
+    markDirty(); renderResults();
+  });
+
+  function copyText(text, btn) {
+    const done = () => { const o = btn.textContent; btn.textContent = "تم النسخ"; setTimeout(() => { btn.textContent = o; }, 1500); };
+    try {
+      navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+    } catch (e) { fallbackCopy(text, done); }
+  }
+  function fallbackCopy(text, done) {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { setStatus("ما قدرنا ننسخ، انسخ النص يدوياً.", "bad"); }
+    ta.remove();
+  }
+  function lineFor(r) {
+    const who = r.a.tenant ? r.a.name + " (" + r.a.tenant + ")" : r.a.name;
+    const feePart = r.fee ? " (" + fmt(r.energy) + " كهرباء + " + fmt(r.fee) + " رسوم عداد)" : "";
+    return who + ": " + fmtInt(r.cons) + " ك.و.س = " + fmt(r.amount) + " ريال" + feePart;
+  }
+  $("#apts").addEventListener("click", (e) => {
+    const id = e.target.dataset.copy; if (!id) return;
+    const c = compute(); const r = c.rows.find((x) => x.a.id === id);
+    if (!r || isNaN(r.amount)) { setStatus("كمّل قراءات الشقة أولاً.", "bad"); return; }
+    const r0 = draft.readings[id];
+    const text = "فاتورة كهرباء " + monthLabel(current) + "\n" + lineFor(r) + "\nالقراءة السابقة: " + r0.start + " | الحالية: " + r0.end;
+    copyText(text, e.target);
+  });
+  $("#copyAll").addEventListener("click", (e) => {
+    const c = compute();
+    const lines = c.rows.filter((r) => !isNaN(r.amount)).map(lineFor);
+    if (!lines.length) { setStatus("ما فيه حسبة كاملة للنسخ.", "bad"); return; }
+    copyText("كهرباء العمارة، " + monthLabel(current) + "\n" + lines.join("\n") + "\nالإجمالي: " + fmt(c.totalAmt) + " ريال", e.target);
+  });
+
+  $("#showExample").addEventListener("click", () => { fillExample(true); setStatus(""); });
+
+  $("#clearExample").addEventListener("click", () => {
+    example = false;
+    const r = {}; config.apartments.forEach((a) => { r[a.id] = { start: "", end: "" }; });
+    draft = { bill: "", readings: r, dirty: false };
+    drafts[current] = draft;
+    renderAll();
+  });
+
+  $("#save").addEventListener("click", async () => {
+    if (draft.example) { setStatus("امسح الأرقام التوضيحية أولاً واكتب قراءاتكم.", "bad"); return; }
+    const c = compute();
+    if (!config.apartments.length) { setStatus("أضف الشقق أولاً.", "bad"); return; }
+    const missing = c.rows.filter((r) => isNaN(r.cons) && !r.err).map((r) => r.a.name);
+    if (c.rows.some((r) => r.err)) { setStatus("فيه قراءة غلط، صححها قبل الحفظ.", "bad"); return; }
+    if (missing.length) { setStatus("ناقص قراءات: " + missing.join("، "), "bad"); return; }
+    if (isNaN(c.price)) { setStatus(config.method === "split" ? "اكتب مبلغ الفاتورة." : "اكتب سعر الكيلوواط.", "bad"); return; }
+    const readings = {};
+    c.rows.forEach((r) => { const x = draft.readings[r.a.id]; readings[r.a.id] = { start: toNum(x.start), end: toNum(x.end), amount: Math.round(r.amount * 100) / 100 }; });
+    const body = {
+      month: current, method: config.method,
+      bill: config.method === "split" ? toNum(draft.bill) : null,
+      rate: config.method === "rate" ? toNum(config.rate) : null,
+      vat: config.method === "rate" ? !!config.vat : false,
+      fee: c.rows.length ? c.rows[0].fee : 0,
+      feeIncluded: config.method === "split" ? !!config.feeIncluded : false,
+      apartments: config.apartments.map((a) => ({ id: a.id, name: a.name, tenant: a.tenant || "" })),
+      readings,
+      totals: { cons: c.totalCons, amount: Math.round(c.totalAmt * 100) / 100 },
+      savedAt: new Date().toISOString()
+    };
+    $("#save").disabled = true;
+    try {
+      const before = months[current];
+      months[current] = body;
+      if (!persist()) { if (before) months[current] = before; else delete months[current]; throw new Error("storage"); }
+      draft.dirty = false;
+      delete drafts[current];
+      renderHist();
+      setStatus("تم حفظ " + monthLabel(current) + ". الشهر الجاي بيبدأ من هذي القراءات.", "ok");
+    } catch (err) {
+      setStatus(err && err.code === "invalid_argument" ? "ما تم الحفظ." : "ما تم الحفظ، جرّب مرة ثانية.", "bad");
+    } finally { $("#save").disabled = false; }
+  });
+
+  $("#hist").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-month]"); if (!b) return;
+    loadMonth(b.dataset.month);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  // apartment management
+  $("#mng").addEventListener("input", (e) => {
+    const m = e.target.dataset.m; if (!m) return;
+    const id = e.target.closest(".mng-row").dataset.id;
+    const a = config.apartments.find((x) => x.id === id); if (!a) return;
+    a[m] = e.target.value;
+    renderApts(); renderResults();
+  });
+  $("#mng").addEventListener("change", (e) => { if (e.target.dataset.m) saveConfig(); });
+  $("#mng").addEventListener("click", (e) => {
+    const id = e.target.dataset.del; if (!id) return;
+    if (e.target.dataset.armed !== "1") { e.target.dataset.armed = "1"; e.target.textContent = "تأكيد الحذف"; return; }
+    config.apartments = config.apartments.filter((a) => a.id !== id);
+    saveConfig(); renderAll();
+  });
+  $("#addApt").addEventListener("click", () => {
+    const id = "a" + Date.now().toString(36);
+    config.apartments.push({ id, name: "شقة " + (config.apartments.length + 1), tenant: "" });
+    const prev = prevMonthOf(current);
+    const p = prev && prev.readings && prev.readings[id];
+    draft.readings[id] = { start: p ? String(p.end) : "", end: "" };
+    saveConfig(); renderAll();
+    const inp = document.getElementById("n-" + id); if (inp) inp.focus();
+  });
+
+  // ---- backup ----
+  $("#backup").addEventListener("click", () => {
+    try {
+      const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), config, months }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "كهرباء-العمارة-" + nowMonth() + ".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      setStatus("تم تجهيز النسخة الاحتياطية.", "ok");
+    } catch (e) { setStatus("ما قدرنا ننزل النسخة الاحتياطية.", "bad"); }
+  });
+  $("#restore").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const d = JSON.parse(rd.result);
+        if (!d || !d.config || !Array.isArray(d.config.apartments) || typeof d.months !== "object") throw new Error("bad");
+        config = d.config; months = d.months || {};
+        if (config.fee == null) config.fee = "5";
+        drafts = {};
+        persist();
+        loadMonth(current);
+        setStatus("تم استرجاع البيانات.", "ok");
+      } catch (err) { setStatus("الملف هذا مو نسخة احتياطية من الحاسبة.", "bad"); }
+      e.target.value = "";
+    };
+    rd.readAsText(f);
+  });
+
+  // ---- boot ----
+  $("#month").value = current;
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && d.config && Array.isArray(d.config.apartments)) config = d.config;
+      if (d && d.months && typeof d.months === "object") months = d.months;
+      if (config.fee == null) config.fee = "5";
+    }
+  } catch (e) {}
+  if (Object.keys(months).length) loadMonth(current); else fillExample(false);
+
+  const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  $("#installHint").hidden = standalone;
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+  }
+})();
+</script>
+</body>
+</html>
